@@ -6,10 +6,10 @@ import logging
 import json
 import os
 import paho.mqtt.client as mqtt
+import random
 
 MY_SYSTEMID    = 0x00ED                # random number, has to be different from any device in local network
-MY_SERIAL      = 0x23021922            # random number, has to be different from any device in local network
-MY_SERIAL      = 0x23021923            # random number, has to be different from any device in local network
+MY_SERIAL      = int(random.random() * 1000000000)            # random number, has to be different from any device in local network
 ANY_SYSTEMID   = 0xFFFF                # 0xFFFF is any susyid
 ANY_SERIAL     = 0xFFFFFFFF            # 0xFFFFFFFF is any serialnumber
 SMA_PKT_HEADER = "534D4100000402A000000001"
@@ -185,15 +185,17 @@ class SMA_SPEEDWIRE:
 
             elif cmd == 0x2377:
               temp = unpack_from("I", data, offset=62)[0]
-              if (temp != -2147483648) and (temp != 0xFFFFFFFF):
-                  temp = temp / 100.0
-              sensors["temp"] = temp
+              value = 0
+              if (temp != -0x80000000) and (temp != 0xFFFFFFFF) and (temp != 0x80000000):
+                  value = temp / 100.0
+              sensors["temp"] = { "value": value, "unit": "°C", "t": "temperature"}
 
             elif cmd == 0x4657:
               freq = unpack_from("I", data, offset=62)[0]
-              if (freq != -2147483648) and (freq != 0xFFFFFFFF):
-                  freq = freq / 100.0
-              sensors["frequency"] = freq
+              value = 0
+              if (freq != -0x80000000) and (freq != 0xFFFFFFFF) and (freq != 0x80000000):
+                  value = freq / 100.0
+              sensors["frequency"] = { "value": value, "unit": "Hz", "t": "frequency"}
 
             elif cmd == 0x251E:
               pdc1 = unpack_from("I", data, offset=62)[0]
@@ -201,14 +203,14 @@ class SMA_SPEEDWIRE:
               if data_len >= 90:
                 pdc2 = unpack_from("I", data, offset=90)[0]
 
-              if pdc2 < 0:
+              if (pdc2 < 0) or (pdc2 == 0x80000000):
                   pdc2 = 0
 
-              if pdc1 < 0:
+              if (pdc1 < 0) or (pdc1 == 0x80000000):
                   pdc1 = 0
 
-              sensors["pdc_string1"] = { "value": pdc1, "unit": "W" }
-              sensors["pdc_string2"] = { "value": pdc2, "unit": "W" }
+              sensors["pdc_string1"] = { "value": pdc1, "unit": "W", "t": "power" }
+              sensors["pdc_string2"] = { "value": pdc2, "unit": "W", "t": "power" }
 
             elif cmd == 0x4640:
               for metric in [
@@ -217,9 +219,9 @@ class SMA_SPEEDWIRE:
                       ["pac_phase3", unpack_from("I", data, offset=118)[0], "W"],
                       ]:
                   value = 0
-                  if (metric[1] != -2147483648) and (metric[1] != 0xFFFFFFFF):
+                  if (metric[1] != -0x80000000) and (metric[1] != 0xFFFFFFFF) and (metric[1] != 0x80000000):
                       value = metric[1]
-                  sensors[metric[0]] = {"value": value, "unit": metric[2]} 
+                  sensors[metric[0]] = {"value": value, "unit": metric[2], "t": "power"} 
                     
             elif cmd == 0x451F:
               udc1 = unpack_from("I", data, offset=62)[0]
@@ -239,9 +241,11 @@ class SMA_SPEEDWIRE:
                       ["idc_string2", idc2, "A"],
                       ]:
                   value = 0
-                  if (metric[1] != -2147483648) and (metric[1] != 0xFFFFFFFF):
+                  if (metric[1] != -0x80000000) and (metric[1] != 0xFFFFFFFF) and (metric[1] != 0x80000000):
                       value = metric[1] / 100.0
-                  sensors[metric[0]] = {"value": value, "unit": metric[2]} 
+                  sensors[metric[0]] = {"value": value, "unit": metric[2], "t": "voltage"} 
+                  if metric[2] == "A":
+                    sensors[metric[0]]["t"] = "current"
 
             elif cmd == 0x4648:
               for metric in [
@@ -253,24 +257,26 @@ class SMA_SPEEDWIRE:
                       ["iac_phase3", unpack_from("I", data, offset=202)[0], "A"],
                       ]:
                   value = 0
-                  if (metric[1] != -2147483648) and (metric[1] != 0xFFFFFFFF):
+                  if (metric[1] != -0x80000000) and (metric[1] != 0xFFFFFFFF) and (metric[1] != 0x80000000):
                       value = metric[1] / 100.0
-                  sensors[metric[0]] = {"value": value, "unit": metric[2]} 
+                  sensors[metric[0]] = {"value": value, "unit": metric[2], "t": "voltage"} 
+                  if metric[2] == "A":
+                    sensors[metric[0]]["t"] = "current"
 
             elif cmd == 0x2601:
                 if data_len >= 66:
                     value = unpack_from("I", data, offset=62)[0]
                     if (value != 0x80000000) and (value != 0xFFFFFFFF) and (value > 0):
-                        sensors['energy_total'] = { 'value': value / 1000, "unit": "kWh" }
+                        sensors['energy_total'] = { 'value': value / 1000, "unit": "kWh", "t": "energy" }
                 if data_len >= 82:
                     value = unpack_from("I", data, offset=78)[0]
-                    sensors['energy_today'] = { 'value': value / 1000, "unit": "kWh" }
+                    sensors['energy_today'] = { 'value': value / 1000, "unit": "kWh", "t": "energy" }
 
             elif cmd == 0x263F:
                 value = unpack_from("I", data, offset=62)[0]
                 if (value == 0x80000000):
                     value = 0
-                sensors['power_ac_total'] = { 'value': value / 1000, "unit": "W" }
+                sensors['power_ac_total'] = { 'value': value / 1000, "unit": "W", "t": "power" }
             return sensors
 
     def init(self):
@@ -291,11 +297,6 @@ class SMA_SPEEDWIRE:
         self._logout()
         return data
     
-    def update(self):
-        self._login()
-        self._fetch("energy")
-        self._fetch("power_ac_total")
-        self._logout()
 
 TOPIC = os.environ["SMA_TOPIC"]
 INVERTER_IP = os.environ["SMA_INVERTER_IP"]
@@ -308,15 +309,77 @@ client = mqtt.Client()
 client.connect(MQTT_HOST)
 client.loop_start()
 
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
+logging.info(f"Serial: {MY_SERIAL}")
 
 inverter = SMA_SPEEDWIRE(INVERTER_IP, INVERTER_PASSWORD)
+inverter.init()
+
+def stat_t(metric_name):
+    return f"sma/{INVERTER_IP}/{metric_name}"
+
+for metric_name, data in inverter.metrics().items():
+    splitted_ip = INVERTER_IP.split('.')
+    hex_inverter_ip = '{:02X}{:02X}{:02X}{:02X}'.format(*map(int, splitted_ip))
+
+    topic = f"homeassistant/sensor/speedwire_sma_{hex_inverter_ip}/{metric_name}/config"
+
+    stat_cla = "measurement"
+    if data['unit'] == "kWh":
+      stat_cla = "total_increasing"
+
+    config = { 
+              "name": metric_name, 
+              "stat_t": stat_t(metric_name),
+              "uniq_id": f"sma_speedwire_{hex_inverter_ip}_{metric_name}",
+              "unit_of_meas": data["unit"],
+              "dev_cla": data["t"],
+              "stat_cla": stat_cla,
+              "dev": {"name": f"SMA Inverter {INVERTER_IP}", 
+                      "mf": "SMA", 
+                      "ids": f"SMA-{hex_inverter_ip}",
+                      "mdl": inverter.inv_type},
+              "exp_aft": SLEEP_INTERVAL * 2,
+             }
+    logging.info(f"Creating HA auto discovery messages: {topic}")
+    client.publish(topic, payload=json.dumps(config), retain=True)
+
+time.sleep(1)
+
 while True:
     cur = time.monotonic()
-    client.publish(TOPIC, payload=json.dumps(inverter.metrics()))
+    metrics = inverter.metrics()
+    for metric_name, data in metrics.items():
+        if data["value"] != 0:
+          client.publish(stat_t(metric_name), payload=data["value"])
+
+    victron_mqtt_pv = { 
+                       "pv": {
+                             "power": metrics["power_ac_total"]["value"],
+                             "voltage": metrics["uac_phase1"]["value"],
+                             "current": metrics["iac_phase1"]["value"] +
+                                        metrics["iac_phase2"]["value"] +
+                                        metrics["iac_phase3"]["value"],
+                             "energy_forward": metrics["energy_today"]["value"],
+                             "L1": {
+                                   "power":   metrics["pac_phase1"]["value"],
+                                   "voltage": metrics["uac_phase1"]["value"],
+                                   "current": metrics["iac_phase1"]["value"],
+                             },
+                             "L2": {
+                                   "power":   metrics["pac_phase2"]["value"],
+                                   "voltage": metrics["uac_phase2"]["value"],
+                                   "current": metrics["iac_phase2"]["value"],
+                             },
+                             "L3": {
+                                   "power":   metrics["pac_phase3"]["value"],
+                                   "voltage": metrics["uac_phase3"]["value"],
+                                   "current": metrics["iac_phase3"]["value"],
+                             },
+                           }, 
+                      }
+    client.publish(TOPIC, payload=json.dumps(victron_mqtt_pv))
     duration = (time.monotonic() - cur)
-    logger.info(f"Metric publish took {duration} seconds")
+    logging.info(f"Metric publish took {duration} seconds")
     time.sleep(SLEEP_INTERVAL - duration)
 
