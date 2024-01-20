@@ -355,7 +355,7 @@ while True:
 
     victron_mqtt_pv = { 
                        "pv": {
-                             "power": metrics["power_ac_total"]["value"],
+                             "power": metrics["power_ac_total"]["value"]*1000,
                              "voltage": metrics["uac_phase1"]["value"],
                              "current": metrics["iac_phase1"]["value"] +
                                         metrics["iac_phase2"]["value"] +
