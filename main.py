@@ -276,7 +276,7 @@ class SMA_SPEEDWIRE:
                 value = unpack_from("I", data, offset=62)[0]
                 if (value == 0x80000000):
                     value = 0
-                sensors['power_ac_total'] = { 'value': value / 1000, "unit": "W", "t": "power" }
+                sensors['power_ac_total'] = { 'value': value, "unit": "W", "t": "power" }
             return sensors
 
     def init(self):
@@ -355,7 +355,7 @@ while True:
 
     victron_mqtt_pv = { 
                        "pv": {
-                             "power": metrics["power_ac_total"]["value"]*1000,
+                             "power": metrics["power_ac_total"]["value"],
                              "voltage": metrics["uac_phase1"]["value"],
                              "current": metrics["iac_phase1"]["value"] +
                                         metrics["iac_phase2"]["value"] +
