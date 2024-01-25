@@ -339,7 +339,7 @@ for metric_name, data in inverter.metrics().items():
                       "mf": "SMA", 
                       "ids": f"SMA-{hex_inverter_ip}",
                       "mdl": inverter.inv_type},
-              "exp_aft": SLEEP_INTERVAL * 2,
+              "exp_aft": 30,
              }
     logging.info(f"Creating HA auto discovery messages: {topic} -> data: {data}")
     client.publish(topic, payload=json.dumps(config), retain=True)
