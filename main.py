@@ -309,7 +309,7 @@ client = mqtt.Client()
 client.connect(MQTT_HOST)
 client.loop_start()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 logging.info(f"Serial: {MY_SERIAL}")
 
 inverter = SMA_SPEEDWIRE(INVERTER_IP, INVERTER_PASSWORD)
