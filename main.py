@@ -341,10 +341,10 @@ for metric_name, data in inverter.metrics().items():
                       "mdl": inverter.inv_type},
               "exp_aft": SLEEP_INTERVAL * 2,
              }
-    logging.info(f"Creating HA auto discovery messages: {topic}")
+    logging.info(f"Creating HA auto discovery messages: {topic} -> data: {data}")
     client.publish(topic, payload=json.dumps(config), retain=True)
 
-time.sleep(1)
+time.sleep(5)
 
 while True:
     cur = time.monotonic()
