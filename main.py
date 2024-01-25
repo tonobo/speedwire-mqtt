@@ -8,7 +8,7 @@ import os
 import paho.mqtt.client as mqtt
 import random
 
-MY_SYSTEMID    = 0x00ED                # random number, has to be different from any device in local network
+MY_SYSTEMID    = int(random.random() * 100)                # random number, has to be different from any device in local network
 MY_SERIAL      = int(random.random() * 1000000000)            # random number, has to be different from any device in local network
 ANY_SYSTEMID   = 0xFFFF                # 0xFFFF is any susyid
 ANY_SERIAL     = 0xFFFFFFFF            # 0xFFFFFFFF is any serialnumber
