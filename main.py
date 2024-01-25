@@ -381,5 +381,6 @@ while True:
     client.publish(TOPIC, payload=json.dumps(victron_mqtt_pv))
     duration = (time.monotonic() - cur)
     logging.info(f"Metric publish took {duration} seconds")
-    time.sleep(SLEEP_INTERVAL - duration)
+    if SLEEP_INTERVAL > duration:
+      time.sleep(SLEEP_INTERVAL - duration)
 
