@@ -7,6 +7,8 @@ import json
 import os
 import paho.mqtt.client as mqtt
 import random
+from prometheus_client import start_http_server, Gauge, Counter
+import threading
 
 MY_SYSTEMID    = int(random.random() * 100)                # random number, has to be different from any device in local network
 MY_SERIAL      = int(random.random() * 1000000000)            # random number, has to be different from any device in local network
@@ -14,6 +16,30 @@ ANY_SYSTEMID   = 0xFFFF                # 0xFFFF is any susyid
 ANY_SERIAL     = 0xFFFFFFFF            # 0xFFFFFFFF is any serialnumber
 SMA_PKT_HEADER = "534D4100000402A000000001"
 SMA_ESIGNATURE = "00106065"
+
+DC_POWER_METRIC =               Gauge('sma_dc_power', 'DC Power')
+AC_POWER_TOTAL_METRIC =         Gauge('sma_ac_power_total', 'Total AC Power')
+AC_VOLTAGE_PHASE_1_METRIC =     Gauge('sma_ac_voltage_phase1', 'AC Voltage Phase 1')
+AC_VOLTAGE_PHASE_2_METRIC =     Gauge('sma_ac_voltage_phase2', 'AC Voltage Phase 2')
+AC_VOLTAGE_PHASE_3_METRIC =     Gauge('sma_ac_voltage_phase3', 'AC Voltage Phase 3')
+AC_POWER_PHASE_1_METRIC =       Gauge('sma_ac_power_phase1', 'AC Power Phase 1')
+AC_POWER_PHASE_2_METRIC =       Gauge('sma_ac_power_phase2', 'AC Power Phase 2')
+AC_POWER_PHASE_3_METRIC =       Gauge('sma_ac_power_phase3', 'AC Power Phase 3')
+AC_POWER_METRIC =               Gauge('sma_ac_power', 'AC Power')
+AC_CURRENT_PHASE_1_METRIC =     Gauge('sma_ac_current_phase1', 'AC Current Phase 1')
+AC_CURRENT_PHASE_2_METRIC =     Gauge('sma_ac_current_phase2', 'AC Current Phase 2')
+AC_CURRENT_PHASE_3_METRIC =     Gauge('sma_ac_current_phase3', 'AC Current Phase 3')
+DC_VOLTAGE_STRING_1_METRIC =    Gauge('sma_dc_voltage_string1', 'DC Voltage String 1')
+DC_VOLTAGE_STRING_2_METRIC =    Gauge('sma_dc_voltage_string2', 'DC Voltage String 2')
+DC_CURRENT_STRING_1_METRIC =    Gauge('sma_dc_current_string1', 'DC Current String 1')
+DC_CURRENT_STRING_2_METRIC =    Gauge('sma_dc_current_string2', 'DC Current String 2')
+TEMPERATURE_METRIC =            Gauge('sma_temperature', 'Temperature')
+FREQUENCY_METRIC =              Gauge('sma_frequency', 'Frequency')
+FETCH_LATENCY_SECONDS_METRIC =  Counter('sma_fetch_latency_seconds', 'Duration how long the fetch took')
+FETCH_LATENCY_COUNT_METRIC =    Counter('sma_fetch_latency', 'Duration how long the fetch took')
+FETCH_ERROR_METRIC =            Counter('sma_fetch_error', 'Amount of errors recorded')
+ENERGY_TOTAL_METRIC =           Counter('sma_energy', 'Total Energy')
+ENERGY_TODAY_METRIC =           Counter('sma_energy_today', 'Energy Today')
 
 # UDP_IPB = "239.12.255.254"
 # MESSAGE = bytes.fromhex('534d4100000402a0ffffffff0000002000000000')
@@ -294,6 +320,30 @@ class SMA_SPEEDWIRE:
           self._fetch("freq") | \
           self._fetch("power_ac_total") | \
           self._fetch("ac_power") 
+
+        timestamp = int(time.time())
+
+        DC_POWER_METRIC.set(data.get('dc_power', {}).get('value', 0))
+        AC_POWER_TOTAL_METRIC.set(data.get('power_ac_total', {}).get('value', 0))
+        AC_VOLTAGE_PHASE_1_METRIC.set(data.get('uac_phase1', {}).get('value', 0))
+        AC_VOLTAGE_PHASE_2_METRIC.set(data.get('uac_phase2', {}).get('value', 0))
+        AC_VOLTAGE_PHASE_3_METRIC.set(data.get('uac_phase3', {}).get('value', 0))
+        AC_POWER_PHASE_1_METRIC.set(data.get('pac_phase1', {}).get('value', 0))
+        AC_POWER_PHASE_2_METRIC.set(data.get('pac_phase2', {}).get('value', 0))
+        AC_POWER_PHASE_3_METRIC.set(data.get('pac_phase3', {}).get('value', 0))
+        AC_POWER_METRIC.set(data.get('power_ac_total', {}).get('value', 0))
+        AC_CURRENT_PHASE_1_METRIC.set(data.get('iac_phase1', {}).get('value', 0))
+        AC_CURRENT_PHASE_2_METRIC.set(data.get('iac_phase2', {}).get('value', 0))
+        AC_CURRENT_PHASE_3_METRIC.set(data.get('iac_phase3', {}).get('value', 0))
+        DC_VOLTAGE_STRING_1_METRIC.set(data.get('udc_string1', {}).get('value', 0))
+        DC_VOLTAGE_STRING_2_METRIC.set(data.get('udc_string2', {}).get('value', 0))
+        DC_CURRENT_STRING_1_METRIC.set(data.get('idc_string1', {}).get('value', 0))
+        DC_CURRENT_STRING_2_METRIC.set(data.get('idc_string2', {}).get('value', 0))
+        TEMPERATURE_METRIC.set(data.get('temp', {}).get('value', 0))
+        FREQUENCY_METRIC.set(data.get('frequency', {}).get('value', 0))
+        ENERGY_TOTAL_METRIC._value.set(data.get('energy_total', {}).get('value', 0))
+        ENERGY_TODAY_METRIC._value.set(data.get('energy_today', {}).get('value', 0))
+
         self._logout()
         return data
     
@@ -346,41 +396,57 @@ for metric_name, data in inverter.metrics().items():
 
 time.sleep(5)
 
+def start_prometheus_server():
+    # Starte den Prometheus HTTP Server in einem separaten Thread
+    start_http_server(8000)
+
+prometheus_thread = threading.Thread(target=start_prometheus_server)
+prometheus_thread.daemon = True
+prometheus_thread.start()
+
 while True:
     cur = time.monotonic()
-    metrics = inverter.metrics()
-    for metric_name, data in metrics.items():
-        if data["value"] != 0:
-          client.publish(stat_t(metric_name), payload=data["value"])
+    try:
+        metrics = inverter.metrics()
+        for metric_name, data in metrics.items():
+            if data["value"] != 0:
+              client.publish(stat_t(metric_name), payload=data["value"])
 
-    victron_mqtt_pv = { 
-                       "pv": {
-                             "power": metrics["power_ac_total"]["value"],
-                             "voltage": metrics["uac_phase1"]["value"],
-                             "current": metrics["iac_phase1"]["value"] +
-                                        metrics["iac_phase2"]["value"] +
-                                        metrics["iac_phase3"]["value"],
-                             "energy_forward": metrics["energy_today"]["value"],
-                             "L1": {
-                                   "power":   metrics["pac_phase1"]["value"],
-                                   "voltage": metrics["uac_phase1"]["value"],
-                                   "current": metrics["iac_phase1"]["value"],
-                             },
-                             "L2": {
-                                   "power":   metrics["pac_phase2"]["value"],
-                                   "voltage": metrics["uac_phase2"]["value"],
-                                   "current": metrics["iac_phase2"]["value"],
-                             },
-                             "L3": {
-                                   "power":   metrics["pac_phase3"]["value"],
-                                   "voltage": metrics["uac_phase3"]["value"],
-                                   "current": metrics["iac_phase3"]["value"],
-                             },
-                           }, 
-                      }
-    client.publish(TOPIC, payload=json.dumps(victron_mqtt_pv))
-    duration = (time.monotonic() - cur)
-    logging.info(f"Metric publish took {duration} seconds")
+        victron_mqtt_pv = { 
+                           "pv": {
+                                 "power": metrics["power_ac_total"]["value"],
+                                 "voltage": metrics["uac_phase1"]["value"],
+                                 "current": metrics["iac_phase1"]["value"] +
+                                            metrics["iac_phase2"]["value"] +
+                                            metrics["iac_phase3"]["value"],
+                                 "energy_forward": metrics["energy_today"]["value"],
+                                 "L1": {
+                                       "power":   metrics["pac_phase1"]["value"],
+                                       "voltage": metrics["uac_phase1"]["value"],
+                                       "current": metrics["iac_phase1"]["value"],
+                                 },
+                                 "L2": {
+                                       "power":   metrics["pac_phase2"]["value"],
+                                       "voltage": metrics["uac_phase2"]["value"],
+                                       "current": metrics["iac_phase2"]["value"],
+                                 },
+                                 "L3": {
+                                       "power":   metrics["pac_phase3"]["value"],
+                                       "voltage": metrics["uac_phase3"]["value"],
+                                       "current": metrics["iac_phase3"]["value"],
+                                 },
+                               }, 
+                          }
+        client.publish(TOPIC, payload=json.dumps(victron_mqtt_pv))
+        duration = (time.monotonic() - cur)
+        FETCH_LATENCY_COUNT_METRIC.inc(1)
+        FETCH_LATENCY_SECONDS_METRIC.inc(duration)
+        logging.info(f"Metric publish took {duration} seconds")
+    except Exception as e:
+        duration = (time.monotonic() - cur)
+        logging.error(f"Metric publish failed after {duration} seconds: {e}")
+        FETCH_ERROR_METRIC.inc(1)
+
     if SLEEP_INTERVAL > duration:
       time.sleep(SLEEP_INTERVAL - duration)
 
